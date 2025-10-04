@@ -1050,3 +1050,68 @@ def test_symmetric(xp):
         w = win(4097, xp=xp)
         error = xp.max(xp.abs(w - flip(w)))
         xp_assert_equal(error, xp.asarray(0.0), check_dtype=False, check_0d=False)
+
+
+#Here are where my tests start
+
+import numpy as np
+from numpy.testing import assert_allclose
+from numpy.fft import fft
+import pytest
+
+from scipy.signal import windows, get_window
+
+
+# First Test: Tests a numerical property of the boxcar windows discrete forier transform, being the relative amplitude of the sidelobe
+def boxcarSidelobeTest():
+    N = 8                                             #Sets variable N = 8
+    W = fft(windows.boxcar(N), 16)                    #Computes the discrete fourier transform of the boxcar window (rectangular window) with parameter N=8, returning [1,1,...] with 8 ones
+                                                      #Paramter 16 is used to make it 16-point DFT.
+
+    sidelobeAmp = 20.0 * np.log10(np.abs(W[3] / W[0]))          #Measures the amplitude of the sidelobe (small ripples) relative to the DC main lobe (central bump)
+                                                                # Uses the absolute value of the ratio W[3] / W[0] which is the average of the signal / bin 3 where the sidelobe is
+                                                                # 20 log 10 () to convert to decibels
+    expectedAmp = -12.956579111040664                  #The expected value, where the sidelobe is approximately 25% of the main peaks value
+
+    assert_allclose(sidelobeAmp, expectedAmp, rtol=1e-6, atol=1e-9)         #Assert statement to compare the computed sidelobe to the expected value
+                                                                            #Specifies the tolerance as parameters (absolute tolerance, and relative tolerance)
+
+
+
+# Second Test: Ensures that the Equivalent Noise Bandwidth formula (used to measure the effective width of frequency band that is let through by the window)
+#             is equal to 1 for all window lengths of the boxcar function.
+def boxcarENBWTest():
+    for N in [1, 2, 4, 64, 128, 512]:                #Creates loop which runs 6 times, with N=1, 2, 4... etc
+        w = windows.boxcar(N)               #Returns boxcar window, which is an array where every element is 1, with N items
+        boxcarENBW = (N * np.sum(w**2) / (np.sum(w) ** 2))                  #Computes the ENBW formula. Because boxcar window is used, w**2 (w^2) is 1, and the sum
+                                                                            #of every element = N (1+1+1...). The np.sum(w) is the sum of all elements = N, and this value is squared to get N^2
+                                                                            #Therefore, N * N / N^2 = 1
+        assert_allclose(boxcarENBW, 1.0, rtol=1e-15, atol=1e-15, )          #Assert statement ewhich confirms that the ENBW calculation for every boxcar window
+                                                                                    #length = 1. The standard tolerances are given as parameters.
+
+
+
+# Third Test: Compare both methods of retrieving the periodic variant of the window
+@pytest.mark.parametrize("windowName,parameters", [       # Sets the test to run for a variety of types of windows.
+    ("hann", ()),                                         #Tukey window needs parameter alpha set (shape parameter)
+    ("hamming", ()),                                       #Kaiser window needs parameter beta set
+    ("blackman", ()),
+    ("bartlett", ()),
+    ("tukey", (0.5,)),
+    ("kaiser", (3.0,)),
+])
+
+def periodicWindowMatchTest(windowName, parameters):              #
+    N = 64                                                     #Sets variable N=64, for the length of the window
+
+    windowPeriodicHelper = get_window(windowName, N, fftbins=True)          #Gets the periodic window using fftbins = True using helper function get_window
+
+    windowFunction = getattr(windows, windowName)                       #Returns the function object using the window name and module windows
+
+    windowSymF = windowFunction(N, *parameters, sym=False)               #Call the function for the specific window type with paramters for the window size (64)
+                                                                #necessary parameters as described earlier, and sym=False to produce the periodic and not the symmetric version
+
+    assert_allclose(windowPeriodicHelper, windowSymF, rtol=1e-12, atol=1e-12)        #Assert statement to compare the resulting arrays of both periodic window variants with specified tolerances
+
+
+
